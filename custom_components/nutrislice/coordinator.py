@@ -181,10 +181,43 @@ class NutrisliceMenuData:
     menu_type_slug: str
     menu_type_name: str
     days_by_date: dict[str, ParsedDayMenu]
-    today: ParsedDayMenu | None
-    tomorrow: ParsedDayMenu | None
-    next_school_day: ParsedDayMenu | None
     last_updated: datetime
+
+    # today / tomorrow / next_school_day are worked out when read, not when the
+    # menu was fetched, so they roll over at midnight instead of staying on the
+    # previous day until the next refresh (up to the whole update interval).
+
+    def _day_at(self, offset_days: int) -> ParsedDayMenu | None:
+        """Return the menu offset_days from today, if one was published."""
+        day = dt_util.now().date() + timedelta(days=offset_days)
+        return self.days_by_date.get(day.isoformat())
+
+    @property
+    def today(self) -> ParsedDayMenu | None:
+        """Today's menu, if one was published."""
+        return self._day_at(0)
+
+    @property
+    def tomorrow(self) -> ParsedDayMenu | None:
+        """Tomorrow's menu, if one was published."""
+        return self._day_at(1)
+
+    @property
+    def next_school_day(self) -> ParsedDayMenu | None:
+        """The first day after today with entrees.
+
+        Nutrislice marks weekends, holidays, breaks, and summer alike, as days
+        with no menu, so "school day" here simply means a day with a menu.
+        """
+        today = dt_util.now().date().isoformat()
+        return next(
+            (
+                self.days_by_date[date_str]
+                for date_str in sorted(self.days_by_date)
+                if date_str > today and self.days_by_date[date_str].has_entrees
+            ),
+            None,
+        )
 
 
 NO_MENU_MARKDOWN = "No menu scheduled"
@@ -415,9 +448,6 @@ class NutrisliceCoordinator(DataUpdateCoordinator[dict[str, NutrisliceMenuData]]
         result: dict[str, NutrisliceMenuData] = {}
         now = dt_util.now()
         today_date = now.date()
-        tomorrow_date = today_date + timedelta(days=1)
-        today_str = today_date.isoformat()
-        tomorrow_str = tomorrow_date.isoformat()
 
         for menu_info in self.menu_types:
             menu_type_slug = menu_info.get("slug")
@@ -443,19 +473,6 @@ class NutrisliceCoordinator(DataUpdateCoordinator[dict[str, NutrisliceMenuData]]
                 parsed = parse_day(d)
                 days_by_date[parsed.date_str] = parsed
 
-            today_menu = days_by_date.get(today_str)
-            tomorrow_menu = days_by_date.get(tomorrow_str)
-
-            # First day after today with a menu (fallback for weekends/holidays)
-            next_school_day = next(
-                (
-                    days_by_date[d_str]
-                    for d_str in sorted(days_by_date)
-                    if d_str > today_str and days_by_date[d_str].has_entrees
-                ),
-                None,
-            )
-
             result[menu_type_slug] = NutrisliceMenuData(
                 district=self.district,
                 school_slug=self.school_slug,
@@ -463,9 +480,6 @@ class NutrisliceCoordinator(DataUpdateCoordinator[dict[str, NutrisliceMenuData]]
                 menu_type_slug=menu_type_slug,
                 menu_type_name=menu_type_name,
                 days_by_date=days_by_date,
-                today=today_menu,
-                tomorrow=tomorrow_menu,
-                next_school_day=next_school_day,
                 last_updated=now,
             )
 

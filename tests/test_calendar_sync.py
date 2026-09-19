@@ -61,9 +61,6 @@ def make_menu(slug, name, days):
         menu_type_slug=slug,
         menu_type_name=name,
         days_by_date={d.date_str: d for d in days},
-        today=None,
-        tomorrow=None,
-        next_school_day=None,
         last_updated=datetime(2026, 9, 18, 12, 0, 0),
     )
 

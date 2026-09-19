@@ -78,6 +78,8 @@ For each configured school and meal type:
 | `sensor.<school>_<menu>_today` | Sensor | State is today's entrees (e.g. `Cheeseburger, Pizza`), or `No Menu Scheduled`. |
 | `sensor.<school>_<menu>_tomorrow` | Sensor | State is tomorrow's entrees (or the next school day's meal on weekends). |
 
+**Weekends, holidays, breaks, and summer:** Nutrislice doesn't mark these any differently, they're simply days with no menu. On those days Today reads `No Menu Scheduled`, the calendar has no event, and nothing is synced. When *tomorrow* has no menu, the Tomorrow sensor shows the next day that does have one and sets its `is_next_school_day` attribute to `true` (turn this off under Options to always read `No Menu Scheduled` instead). During a break that can mean a menu several days away.
+
 The Today and Tomorrow states show the same courses as your calendar event titles (see **Show in Calendar Titles and Sensors** under Options), so with the default they are the entree list shown above. The full menu is always in the attributes.
 
 `<school>` is the school's name and `<menu>` is the meal type, both lowercased with underscores. *(For example, a school named "Maple Grove" with a Lunch menu gets `sensor.maple_grove_lunch_today`, `sensor.maple_grove_lunch_tomorrow`, and `calendar.maple_grove_lunch`.)*
@@ -110,40 +112,16 @@ Upcoming meals are then copied as all-day events (titled like `🍽️ Lunch: Ch
 
 ## 🔔 Automations & Notifications
 
-### Example 1: Evening Reminder for the Next School Lunch (Recommended)
-Uses the **Tomorrow** sensor, so on a Friday evening it announces Monday's lunch. The title names the day the meal is for.
+### School Lunch Reminder
+Trigger from the **calendar**, not the sensors. The calendar only has an event on days that have a menu, so this stays quiet on weekends, holidays, no-school weekdays, school breaks, and all summer, with no conditions to maintain.
 
 ```yaml
 alias: School lunch reminder
 triggers:
-  - trigger: time
-    at: "18:00:00"
-conditions:
-  - condition: not
-    conditions:
-      - condition: state
-        entity_id: sensor.my_school_lunch_tomorrow
-        state: ["No Menu Scheduled", "unknown", "unavailable"]
-actions:
-  - action: notify.notify
-    data:
-      title: >-
-        Lunch for {{ strptime(state_attr('sensor.my_school_lunch_tomorrow', 'date'), '%Y-%m-%d').strftime('%A') }}
-      message: >-
-        {{ states('sensor.my_school_lunch_tomorrow') }}.
-        Sides: {{ state_attr('sensor.my_school_lunch_tomorrow', 'sides') | join(', ') }}
-```
-
-### Example 2: Morning Reminder from the Calendar
-Fires at 7:00 AM on each school day that has a menu:
-
-```yaml
-alias: School lunch this morning
-triggers:
   - trigger: calendar
     event: start
     entity_id: calendar.my_school_lunch
-    offset: "07:00:00"
+    offset: "-06:00:00" # 6:00 PM the evening before. Use "07:00:00" for 7:00 AM that morning.
 actions:
   - action: notify.notify
     data:
@@ -151,12 +129,16 @@ actions:
       message: "{{ trigger.calendar_event.description }}"
 ```
 
+The evening reminder for a Monday menu arrives on Sunday evening, and nothing is sent on Friday or Saturday. It only fires for days whose menu Nutrislice has published.
+
+> **Don't use the Tomorrow sensor's state on its own to decide whether there's school tomorrow.** When tomorrow has no menu it shows the *next* school day's, so on a Friday it's a real menu and looks like there's school. If you must use it, also require its `is_next_school_day` attribute to be `false`.
+
 ---
 
 ## 📊 Dashboard Card Examples
 
-### Markdown Card: Today & Next School Day
-The `menu_markdown` attribute is the whole menu, already grouped by course, so the card needs no formatting of its own:
+### Markdown Card: Today & Tomorrow
+The `menu_markdown` attribute is the whole menu, already grouped by course, so the card needs no formatting of its own. The second heading changes to "Next School Day" whenever tomorrow has no menu:
 
 ```yaml
 type: markdown
@@ -165,7 +147,7 @@ content: |
   ## Today
   {{ state_attr('sensor.my_school_lunch_today', 'menu_markdown') or 'Not available' }}
 
-  ## Next School Day
+  ## {{ 'Next School Day' if state_attr('sensor.my_school_lunch_tomorrow', 'is_next_school_day') else 'Tomorrow' }}
   {{ state_attr('sensor.my_school_lunch_tomorrow', 'menu_markdown') or 'Not available' }}
 ```
 
@@ -183,7 +165,7 @@ initial_view: listWeek
 
 Click **Configure** on the Nutrislice integration entry in **Settings** > **Devices & Services**:
 - **Update Interval (hours):** Adjust how frequently Home Assistant checks for menu updates (1 to 24 hours, default `4`).
-- **Show Next School Day on Weekends:** When enabled, the `Tomorrow` sensor will show the next school day's meal when tomorrow has no menu, such as on Friday evening, weekends, and holidays.
+- **Show Next School Day When Tomorrow Has No Menu:** On by default. When tomorrow has no menu (weekends, holidays, breaks), the Tomorrow sensor shows the next day that does instead of `No Menu Scheduled`, and sets its `is_next_school_day` attribute to `true`.
 - **Show in Calendar Titles and Sensors:** Tick which courses appear in calendar event titles and in the Today and Tomorrow sensor states: 🍽️ Entrees, 🥖 Sides, 🍎 Fruit, 🥦 Vegetables, 🥛 Beverages. The default, Entrees only, gives `🍽️ Lunch: Cheeseburger, Pizza`. Tick more and each course is led by its emoji, e.g. `Lunch: 🍽️ Cheeseburger, Pizza 🍎 Apple, Orange`. Tick none for just `🍽️ Lunch`. The full grouped menu is always in the event description, and every item is in the sensor attributes. Also offered during setup.
 - **Sync Menus to Calendar:** Optional. Copy upcoming meals into another calendar. See [Syncing Menus to Another Calendar](#-syncing-menus-to-another-calendar).
 

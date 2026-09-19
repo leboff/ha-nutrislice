@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- **Today and Tomorrow showed the wrong day after midnight.** They were worked out when the menu was fetched, so until the next refresh (every 4 hours by default, up to 24) Today still showed yesterday's menu and Tomorrow showed today's. They're now worked out when read, and every entity is rewritten at midnight, so they roll over on time without fetching anything.
+- **The README's "school lunch reminder" fired on weekends and on every evening of a school break.** It relied on the Tomorrow sensor's state, but when tomorrow has no menu that sensor shows the *next school day's* menu, which looked like a valid menu. In a four-week simulation with a holiday Monday and a two-week break it fired 19 times when it shouldn't have. It's replaced with a calendar trigger, which only fires for days that have a menu, so weekends, holidays, no-school weekdays, breaks, and summer are all skipped with no conditions to maintain (no misfires in the same simulation).
+
+### Changed
+- README: documents how weekends, holidays, breaks, and summer appear (Nutrislice doesn't distinguish them; they're all days with no menu), warns against using the Tomorrow sensor's state alone to decide whether there's school, and the dashboard card's second heading now reads "Next School Day" only when tomorrow has no menu, and "Tomorrow" otherwise.
+- The "show next school day on weekends" option is now labelled "Show the next school day when tomorrow has no menu", which is what it has always done.
+
 ## [1.6.0] - 2026-09-19
 
 ### Added

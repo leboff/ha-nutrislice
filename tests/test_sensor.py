@@ -1,12 +1,15 @@
 """Unit tests for Nutrislice sensors."""
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import types
 import unittest
+from unittest.mock import patch
 
 from tests.ha_mock import MockConfigEntry, setup_ha_mocks
 
 setup_ha_mocks()
 
+from custom_components.nutrislice import coordinator as coordinator_module
+from custom_components.nutrislice import sensor as sensor_module
 from custom_components.nutrislice.coordinator import (
     menu_entity_name,
     NutrisliceMenuData,
@@ -59,14 +62,15 @@ class TestNutrisliceSensors(unittest.TestCase):
             raw_day={"date": self.today_str, "menu_items": []},
         )
 
+        self.tomorrow_str = (self.today_date + timedelta(days=1)).isoformat()
         tomorrow_menu = ParsedDayMenu(
-            date_str="2026-09-19",
-            target_date=date(2026, 9, 19),
+            date_str=self.tomorrow_str,
+            target_date=self.today_date + timedelta(days=1),
             is_holiday=False,
             has_menu=True,
             entrees=["Tacos"],
             sides=["Corn"],
-            raw_day={"date": "2026-09-19", "menu_items": []},
+            raw_day={"date": self.tomorrow_str, "menu_items": []},
         )
 
         self.menu_data = NutrisliceMenuData(
@@ -75,10 +79,7 @@ class TestNutrisliceSensors(unittest.TestCase):
             school_name="Lincoln Elementary",
             menu_type_slug="lunch",
             menu_type_name="Lunch",
-            days_by_date={self.today_str: today_menu, "2026-09-19": tomorrow_menu},
-            today=today_menu,
-            tomorrow=tomorrow_menu,
-            next_school_day=tomorrow_menu,
+            days_by_date={self.today_str: today_menu, self.tomorrow_str: tomorrow_menu},
             last_updated=datetime(2026, 9, 18, 12, 0, 0),
         )
 
@@ -103,8 +104,39 @@ class TestNutrisliceSensors(unittest.TestCase):
         sensor = NutrisliceTomorrowMenuSensor(self.mock_coord, self.mock_entry, "lunch")
         self.assertEqual(sensor.native_value, "Tacos")
         attrs = sensor.extra_state_attributes
-        self.assertEqual(attrs["date"], "2026-09-19")
+        self.assertEqual(attrs["date"], self.tomorrow_str)
         self.assertEqual(attrs["entrees"], ["Tacos"])
+
+
+class TestSensorsFollowTheClock(unittest.TestCase):
+    """The sensors show the right day after midnight without waiting for a refresh."""
+
+    def test_states_change_at_midnight_with_no_new_data(self):
+        friday_menu = ParsedDayMenu(date_str="2026-09-18", target_date=date(2026, 9, 18), is_holiday=False,
+                                    has_menu=True, entrees=["Friday Pizza"], raw_day={})
+        thursday_menu = ParsedDayMenu(date_str="2026-09-17", target_date=date(2026, 9, 17), is_holiday=False,
+                                      has_menu=True, entrees=["Thursday Pasta"], raw_day={})
+        tuesday_menu = ParsedDayMenu(date_str="2026-09-22", target_date=date(2026, 9, 22), is_holiday=False,
+                                     has_menu=True, entrees=["Tuesday Tacos"], raw_day={})
+        data = NutrisliceMenuData(
+            district="d", school_slug="s", school_name="School", menu_type_slug="lunch", menu_type_name="Lunch",
+            days_by_date={"2026-09-17": thursday_menu, "2026-09-18": friday_menu, "2026-09-22": tuesday_menu},
+            last_updated=datetime(2026, 9, 17, 23, 0),
+        )
+        coord = MockCoordinator(data={"lunch": data})
+        entry = MockConfigEntry()
+        today = NutrisliceTodayMenuSensor(coord, entry, "lunch")
+        tomorrow = NutrisliceTomorrowMenuSensor(coord, entry, "lunch")
+
+        def read(when):
+            with patch.object(coordinator_module.dt_util, "now", return_value=when), \
+                 patch.object(sensor_module.dt_util, "now", return_value=when):
+                return today.native_value, tomorrow.native_value, tomorrow.extra_state_attributes["is_next_school_day"]
+
+        # Thursday 23:59: today is Thursday, tomorrow is Friday
+        self.assertEqual(read(datetime(2026, 9, 17, 23, 59)), ("Thursday Pasta", "Friday Pizza", False))
+        # Friday 00:01: same data, but now today is Friday and tomorrow is the following Tuesday
+        self.assertEqual(read(datetime(2026, 9, 18, 0, 1)), ("Friday Pizza", "Tuesday Tacos", True))
 
 
 class TestSensorStateSections(unittest.TestCase):
@@ -112,6 +144,7 @@ class TestSensorStateSections(unittest.TestCase):
 
     def setUp(self):
         today = date.today()
+        self.tomorrow_key = (today + timedelta(days=1)).isoformat()
         self.today = ParsedDayMenu(
             date_str=today.isoformat(),
             target_date=today,
@@ -130,10 +163,7 @@ class TestSensorStateSections(unittest.TestCase):
             school_name="Lincoln Elementary",
             menu_type_slug="lunch",
             menu_type_name="Lunch",
-            days_by_date={self.today.date_str: self.today},
-            today=self.today,
-            tomorrow=self.today,
-            next_school_day=None,
+            days_by_date={self.today.date_str: self.today, self.tomorrow_key: self.today},
             last_updated=datetime(2026, 9, 18, 12, 0, 0),
         )
         self.coord = MockCoordinator(data={"lunch": self.menu_data})
@@ -164,9 +194,10 @@ class TestSensorStateSections(unittest.TestCase):
 
     def test_no_menu_is_always_no_menu_scheduled(self):
         """Automations rely on this exact value whatever the courses setting."""
-        self.menu_data.today = self.menu_data.tomorrow = ParsedDayMenu(
-            date_str="2026-09-19", target_date=date(2026, 9, 19), is_holiday=False, has_menu=False
-        )
+        for key in list(self.menu_data.days_by_date):
+            self.menu_data.days_by_date[key] = ParsedDayMenu(
+                date_str=key, target_date=date.fromisoformat(key), is_holiday=False, has_menu=False
+            )
         for sections in (["entrees"], ["entrees", "sides"], []):
             with self.subTest(sections=sections):
                 self.assertEqual(self.states(title_sections=sections), ("No Menu Scheduled",) * 2)
@@ -192,6 +223,7 @@ class TestMenuMarkdownAttribute(unittest.TestCase):
 
     def setUp(self):
         today = date.today()
+        self.tomorrow_key = (today + timedelta(days=1)).isoformat()
         self.day = ParsedDayMenu(
             date_str=today.isoformat(),
             target_date=today,
@@ -207,8 +239,7 @@ class TestMenuMarkdownAttribute(unittest.TestCase):
         self.menu_data = NutrisliceMenuData(
             district="d", school_slug="s", school_name="Lincoln Elementary",
             menu_type_slug="lunch", menu_type_name="Lunch",
-            days_by_date={self.day.date_str: self.day},
-            today=self.day, tomorrow=self.day, next_school_day=None,
+            days_by_date={self.day.date_str: self.day, self.tomorrow_key: self.day},
             last_updated=datetime(2026, 9, 18, 12, 0, 0),
         )
         self.coord = MockCoordinator(data={"lunch": self.menu_data})
@@ -239,15 +270,14 @@ class TestMenuMarkdownAttribute(unittest.TestCase):
 
     def test_no_menu_gives_a_friendly_line_not_none(self):
         """A card templating this attribute must never render 'None'."""
-        self.menu_data.today = None
-        self.menu_data.tomorrow = None
+        self.menu_data.days_by_date.clear()
         for sensor in (NutrisliceTodayMenuSensor, NutrisliceTomorrowMenuSensor):
             with self.subTest(sensor=sensor.__name__):
                 attrs = sensor(self.coord, self.entry, "lunch").extra_state_attributes
                 self.assertEqual(attrs["menu_markdown"], "No menu scheduled")
 
     def test_today_keeps_todays_date_when_there_is_no_menu(self):
-        self.menu_data.today = None
+        del self.menu_data.days_by_date[date.today().isoformat()]
         attrs = NutrisliceTodayMenuSensor(self.coord, self.entry, "lunch").extra_state_attributes
         self.assertEqual(attrs["date"], date.today().isoformat())
 

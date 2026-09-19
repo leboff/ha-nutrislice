@@ -52,13 +52,14 @@
         "title": "Nutrislice Configuration",
         "data": {
           "scan_interval_hours": "Update Interval (hours)",
-          "next_school_day_on_weekend": "Show next school day menu on weekends for 'Tomorrow' sensor",
+          "next_school_day_on_weekend": "Show the next school day when tomorrow has no menu",
           "sync_calendar": "Sync menus to calendar",
           "title_sections": "Show in calendar titles and sensors"
         },
         "data_description": {
           "sync_calendar": "Optional. Copy upcoming meals as all-day events into another calendar, such as a Local Calendar or Google Calendar. Leave empty to turn off. Events already synced are not changed or removed.",
-          "title_sections": "Each course you tick is added to calendar event titles and to the Today and Tomorrow sensors, led by its emoji. With only Entrees ticked they read like: Cheeseburger, Pizza. Tick none to show just the meal name. The full menu is always in the event description and the sensor attributes. Changing this doesn't rewrite meals already synced to another calendar."
+          "title_sections": "Each course you tick is added to calendar event titles and to the Today and Tomorrow sensors, led by its emoji. With only Entrees ticked they read like: Cheeseburger, Pizza. Tick none to show just the meal name. The full menu is always in the event description and the sensor attributes. Changing this doesn't rewrite meals already synced to another calendar.",
+          "next_school_day_on_weekend": "Weekends, holidays, and breaks have no menu. When on, the Tomorrow sensor shows the next day that does, and sets its is_next_school_day attribute to true. When off, it reads No Menu Scheduled."
         }
       }
     }

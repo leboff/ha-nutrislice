@@ -1,11 +1,13 @@
 """Unit tests for the Nutrislice coordinator and data parser."""
-from datetime import date
+from datetime import date, datetime
 import unittest
+from unittest.mock import patch
 
 from tests.ha_mock import setup_ha_mocks
 
 setup_ha_mocks()
 
+from custom_components.nutrislice import coordinator as coordinator_module
 from custom_components.nutrislice.coordinator import (
     NutrisliceMenuData,
     ParsedDayMenu,
@@ -211,6 +213,60 @@ class TestEventTitleSections(unittest.TestCase):
     def test_nothing_selected_shows_just_the_meal(self):
         self.assertEqual(self.day.calendar_summary("Lunch", []), "🍽️ Lunch")
         self.assertEqual(self.day.calendar_summary("Breakfast", []), "🥞 Breakfast")
+
+
+def menu_data(school_days):
+    """Menu data with a one-entree menu on each of the given dates."""
+    days = {}
+    for d in school_days:
+        days[d.isoformat()] = parse_day(
+            {"date": d.isoformat(), "menu_items": [section("Entree"), item(f"Meal {d.day}", "entree")]}
+        )
+    return NutrisliceMenuData(
+        district="d", school_slug="s", school_name="School", menu_type_slug="lunch",
+        menu_type_name="Lunch", days_by_date=days, last_updated=datetime(2026, 9, 17, 12, 0),
+    )
+
+
+def at(data, when):
+    """Return (today, tomorrow, next school day) as meal names, as of `when`."""
+    with patch.object(coordinator_module.dt_util, "now", return_value=when):
+        name = lambda day: day.entrees[0] if day else None
+        return name(data.today), name(data.tomorrow), name(data.next_school_day)
+
+
+class TestDayPointers(unittest.TestCase):
+    """Today, tomorrow, and next school day follow the clock, not the last refresh."""
+
+    # Mon-Fri Sep 14-18, Mon Sep 21 is a holiday, Tue-Fri Sep 22-25, then a two-week break
+    DATA = menu_data(
+        [date(2026, 9, d) for d in (14, 15, 16, 17, 18, 22, 23, 24, 25)] + [date(2026, 10, 12)]
+    )
+
+    def test_school_day_evening(self):
+        self.assertEqual(at(self.DATA, datetime(2026, 9, 16, 18)), ("Meal 16", "Meal 17", "Meal 17"))
+
+    def test_rolls_over_at_midnight_without_a_refresh(self):
+        """The same data read either side of midnight gives a different day."""
+        before = at(self.DATA, datetime(2026, 9, 17, 23, 59))
+        after = at(self.DATA, datetime(2026, 9, 18, 0, 1))
+        self.assertEqual(before, ("Meal 17", "Meal 18", "Meal 18"))
+        self.assertEqual(after, ("Meal 18", None, "Meal 22"))
+
+    def test_weekend_points_to_the_next_school_day(self):
+        self.assertEqual(at(self.DATA, datetime(2026, 9, 19, 18)), (None, None, "Meal 22"))
+
+    def test_holiday_weekday_has_no_menu_but_tomorrow_does(self):
+        self.assertEqual(at(self.DATA, datetime(2026, 9, 21, 12)), (None, "Meal 22", "Meal 22"))
+
+    def test_break_points_to_the_first_day_back(self):
+        self.assertEqual(at(self.DATA, datetime(2026, 10, 3, 18)), (None, None, "Meal 12"))
+
+    def test_summer_has_nothing(self):
+        self.assertEqual(at(menu_data([]), datetime(2026, 7, 6, 12)), (None, None, None))
+
+    def test_past_days_are_never_the_next_school_day(self):
+        self.assertEqual(at(self.DATA, datetime(2026, 10, 13, 12))[2], None)
 
 
 class TestFormattedMarkdown(unittest.TestCase):

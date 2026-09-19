@@ -6,6 +6,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.typing import ConfigType
 
 from .api import NutrisliceApiClient
@@ -60,6 +61,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(coordinator.async_add_listener(_async_schedule_sync))
     _async_schedule_sync()
+
+    # Today and Tomorrow change at midnight; rewrite every entity's state then
+    # rather than waiting for the next refresh (which can be hours away)
+    @callback
+    def _async_midnight(_now) -> None:
+        coordinator.async_update_listeners()
+
+    entry.async_on_unload(
+        async_track_time_change(hass, _async_midnight, hour=0, minute=0, second=1)
+    )
 
     # Reload on options update
     entry.async_on_unload(entry.add_update_listener(async_update_options))
