@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.6.1] - 2026-09-19
 
 ### Fixed
 - **Today and Tomorrow showed the wrong day after midnight.** They were worked out when the menu was fetched, so until the next refresh (every 4 hours by default, up to 24) Today still showed yesterday's menu and Tomorrow showed today's. They're now worked out when read, and every entity is rewritten at midnight, so they roll over on time without fetching anything.
