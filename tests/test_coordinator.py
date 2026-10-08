@@ -70,6 +70,7 @@ class TestNutrisliceCoordinatorParser(unittest.TestCase):
                         "food_category": "sandwich",
                         "rounded_nutrition_info": {"calories": 360.0},
                         "icons": {"food_icons": [{"name": "Milk"}, {"name": "Wheat"}]},
+                        "image_url": "https://api.nutrislice.com/content/asset/serve/image/png/1/thumbnail2",
                     }
                 },
                 {
@@ -148,6 +149,10 @@ class TestNutrisliceCoordinatorParser(unittest.TestCase):
         self.assertTrue(cheeseburger_item.is_entree)
         self.assertEqual(cheeseburger_item.calories, 360.0)
         self.assertEqual(cheeseburger_item.allergens, ["Milk", "Wheat"])
+        self.assertEqual(cheeseburger_item.image_url, "https://api.nutrislice.com/content/asset/serve/image/png/1/thumbnail2")
+        # Foods without a photo carry None, not an empty string
+        pizza_item = next(i for i in parsed.items if i.name == "Cheese Pizza")
+        self.assertIsNone(pizza_item.image_url)
 
     def test_parse_day_empty_menu(self):
         """Test parsing weekend or holiday with no menu items."""

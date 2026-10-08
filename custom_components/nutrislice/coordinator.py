@@ -47,6 +47,7 @@ class ParsedFoodItem:
     is_side: bool
     calories: float | None = None
     allergens: list[str] = field(default_factory=list)
+    image_url: str | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -378,6 +379,8 @@ def parse_day(raw_day: dict[str, Any]) -> ParsedDayMenu:
                     if isinstance(icon, dict) and icon.get("name"):
                         allergens.append(icon["name"])
 
+        image_url = food.get("image_url") or None
+
         kind = classify_item(food_category, section_lower)
         if (
             kind == "entree"
@@ -420,6 +423,7 @@ def parse_day(raw_day: dict[str, Any]) -> ParsedDayMenu:
                 is_side=is_side,
                 calories=calories,
                 allergens=allergens,
+                image_url=image_url,
                 raw_data=item,
             )
         )

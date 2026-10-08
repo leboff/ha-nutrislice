@@ -57,6 +57,7 @@ class TestNutrisliceSensors(unittest.TestCase):
                     is_entree=True,
                     is_side=False,
                     calories=360.0,
+                    image_url="https://example.test/cheeseburger.png",
                 )
             ],
             raw_day={"date": self.today_str, "menu_items": []},
@@ -99,6 +100,7 @@ class TestNutrisliceSensors(unittest.TestCase):
         self.assertEqual(attrs["school_name"], "Lincoln Elementary")
         self.assertEqual(len(attrs["menu_items"]), 1)
         self.assertEqual(attrs["menu_items"][0]["calories"], 360.0)
+        self.assertEqual(attrs["menu_items"][0]["image_url"], "https://example.test/cheeseburger.png")
 
     def test_tomorrow_sensor(self):
         sensor = NutrisliceTomorrowMenuSensor(self.mock_coord, self.mock_entry, "lunch")

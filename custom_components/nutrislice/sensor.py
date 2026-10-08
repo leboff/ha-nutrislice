@@ -119,6 +119,7 @@ class NutrisliceBaseSensor(CoordinatorEntity[NutrisliceCoordinator], SensorEntit
                     "section": item.section,
                     "calories": item.calories,
                     "allergens": item.allergens,
+                    "image_url": item.image_url,
                 }
                 for item in day.items
             ],
