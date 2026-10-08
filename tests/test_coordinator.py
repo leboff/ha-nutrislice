@@ -366,3 +366,75 @@ class TestClassification(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# A real School District of Philadelphia (philasd) K-8 lunch, 2026-10-08.
+# Section titles are accented and numbered, and most items have no category.
+PHILASD_LUNCH = {
+    "date": "2026-10-08",
+    "menu_items": [
+        section("Entrée 1"),
+        item("Turkey & Cheese Sandwich", ""),
+        item("Baby Carrots", "vegetable"),
+        item("Raisins", ""),
+        section("Entrée 2"),
+        item("Italian Cheesy Pull Aparts", ""),
+        item("Baby Carrots", "vegetable"),
+        item("Raisins", ""),
+    ],
+}
+
+
+class TestAccentedNumberedSections(unittest.TestCase):
+    """Philadelphia-style menus: accented "Entrée N" headings, uncategorized items."""
+
+    def test_accented_entree_heading_is_an_entree_section(self):
+        day = parse_day(PHILASD_LUNCH)
+        self.assertTrue(day.has_entrees)
+        self.assertEqual(
+            day.entrees, ["Turkey & Cheese Sandwich", "Italian Cheesy Pull Aparts"]
+        )
+
+    def test_numbered_section_items_after_the_main_are_sides(self):
+        day = parse_day(PHILASD_LUNCH)
+        self.assertIn("Raisins", day.sides)
+        self.assertNotIn("Raisins", day.entrees)
+        self.assertEqual(day.vegetables, ["Baby Carrots"])
+
+    def test_summary_lists_both_meal_choices(self):
+        day = parse_day(PHILASD_LUNCH)
+        self.assertEqual(
+            day.summary, "Turkey & Cheese Sandwich, Italian Cheesy Pull Aparts"
+        )
+
+    def test_categorized_entree_still_wins_in_numbered_section(self):
+        day = parse_day(
+            {
+                "date": "2026-10-05",
+                "menu_items": [
+                    section("Entrée 1"),
+                    item("Crunchmania French Toast", "entree"),
+                    item("Raisins", ""),
+                    section("Entrée 2"),
+                    item("Cereal Cheerios Multi Grain", ""),
+                    item("Cinnamon Graham Crackers", ""),
+                ],
+            }
+        )
+        self.assertEqual(
+            day.entrees, ["Crunchmania French Toast", "Cereal Cheerios Multi Grain"]
+        )
+        self.assertEqual(day.sides, ["Raisins", "Cinnamon Graham Crackers"])
+
+    def test_unnumbered_entree_section_keeps_every_uncategorized_item(self):
+        day = parse_day(
+            {
+                "date": "2026-10-05",
+                "menu_items": [
+                    section("Entree"),
+                    item("Cheeseburger", ""),
+                    item("Chicken Nuggets", ""),
+                ],
+            }
+        )
+        self.assertEqual(day.entrees, ["Cheeseburger", "Chicken Nuggets"])
