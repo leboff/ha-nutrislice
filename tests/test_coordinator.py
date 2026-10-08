@@ -438,3 +438,30 @@ class TestAccentedNumberedSections(unittest.TestCase):
             }
         )
         self.assertEqual(day.entrees, ["Cheeseburger", "Chicken Nuggets"])
+
+
+    def test_or_heading_adds_an_alternative_main(self):
+        # Real philasd K-8 lunch, 2026-10-13
+        day = parse_day(
+            {
+                "date": "2026-10-13",
+                "menu_items": [
+                    section("Entrée 1"),
+                    item("Enchilada Chicken", ""),
+                    section("Or"),
+                    item("Cheeseburger Calzone", ""),
+                    item("Fava Bean Crisps", ""),
+                    item("100% Sun Splash Veg Juice", "vegetable"),
+                    item("Pear Fruit Cup", "fruit"),
+                    section("Entrée 2"),
+                    item("Spanish Rice Cheese Beans", ""),
+                    item("Pear Fruit Cup", "fruit"),
+                ],
+            }
+        )
+        self.assertEqual(
+            day.entrees,
+            ["Enchilada Chicken", "Cheeseburger Calzone", "Spanish Rice Cheese Beans"],
+        )
+        self.assertIn("Fava Bean Crisps", day.sides)
+        self.assertNotIn("Or", day.categories)

@@ -6,7 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -273,6 +273,9 @@ def menu_entity_name(school_name: str, menu_name: str, suffix: str = "") -> str 
     return " ".join(part for part in parts if part) or None
 
 
+# Headings that offer an alternative main within the current meal
+ALTERNATIVE_SECTION_TITLES: Final = {"or", "- or -", "or:"}
+
 # A section heading ending in a number ("Entrée 1", "Option 2") is one meal choice
 NUMBERED_SECTION_RE = re.compile(r"\b\d+\s*$")
 
@@ -340,7 +343,11 @@ def parse_day(raw_day: dict[str, Any]) -> ParsedDayMenu:
             continue
 
         if item.get("is_section_title"):
-            current_section = item.get("text") or "General"
+            title = item.get("text") or "General"
+            if fold_text(title).strip() not in ALTERNATIVE_SECTION_TITLES:
+                # An "Or" heading keeps the current meal: the next item is an
+                # alternative main for it, not a side
+                current_section = title
             section_has_entree = False
             continue
 
