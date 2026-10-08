@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -272,6 +273,16 @@ def menu_entity_name(school_name: str, menu_name: str, suffix: str = "") -> str 
     return " ".join(part for part in parts if part) or None
 
 
+# A section heading ending in a number ("Entrée 1", "Option 2") is one meal choice
+NUMBERED_SECTION_RE = re.compile(r"\b\d+\s*$")
+
+
+def fold_text(text: str) -> str:
+    """Lowercase text and strip accents, so "Entrée 1" matches the "entree" keyword."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).casefold()
+
+
 def classify_item(food_category: str, section: str) -> str:
     """Return "entree", "side", "beverage", or "condiment" for a menu item.
 
@@ -322,6 +333,7 @@ def parse_day(raw_day: dict[str, Any]) -> ParsedDayMenu:
     parsed_items: list[ParsedFoodItem] = []
 
     current_section = "General"
+    section_has_entree = False
 
     for item in raw_menu_items:
         if not isinstance(item, dict):
@@ -329,6 +341,7 @@ def parse_day(raw_day: dict[str, Any]) -> ParsedDayMenu:
 
         if item.get("is_section_title"):
             current_section = item.get("text") or "General"
+            section_has_entree = False
             continue
 
         food = item.get("food")
@@ -341,7 +354,7 @@ def parse_day(raw_day: dict[str, Any]) -> ParsedDayMenu:
         name = name.strip()
 
         food_category = (food.get("food_category") or "").lower()
-        section_lower = current_section.lower()
+        section_lower = fold_text(current_section)
 
         # Nutrition & allergens
         calories = None
@@ -359,6 +372,18 @@ def parse_day(raw_day: dict[str, Any]) -> ParsedDayMenu:
                         allergens.append(icon["name"])
 
         kind = classify_item(food_category, section_lower)
+        if (
+            kind == "entree"
+            and not food_category
+            and section_has_entree
+            and NUMBERED_SECTION_RE.search(section_lower)
+        ):
+            # A numbered heading ("Entrée 1", "Option 2") is one complete meal, as in
+            # Philadelphia's menus, where nothing is categorized. Its first item is
+            # the main; uncategorized items after it are that meal's sides.
+            kind = "side"
+        if kind == "entree":
+            section_has_entree = True
         is_entree = kind == "entree"
         is_side = kind == "side"
         bucket = {
